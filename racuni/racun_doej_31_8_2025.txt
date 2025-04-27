@@ -1,0 +1,9 @@
+      RAČUN
+========================
+Korisnik: doej
+Datum: 31.8.2025
+Vrijeme: 10:00
+Usluga: Šminkanje
+Cijena: 35 EUR
+========================
+Hvala na povjerenju!
