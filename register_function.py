@@ -8,7 +8,7 @@ def hash_password(password):
 
 def create_user(first_name, last_name, phone_number, username, password, user_type):
     """Kreira novog korisnika u CSV datoteci."""
-    filename = '/opt/repos/combined_project/users.csv'
+    filename = 'users.csv'
 
     try:
         if os.path.exists(filename):

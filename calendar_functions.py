@@ -10,7 +10,7 @@ def get_days_in_month(year, month):
     return (next_month - this_month).days
 
 def save_appointment(year, month, day, time_slot, service, username):
-    filename = '/opt/repos/combined_project/appointments.csv'
+    filename = 'appointments.csv'
     appointments = []
 
     if os.path.exists(filename):

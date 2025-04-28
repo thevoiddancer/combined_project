@@ -6,7 +6,7 @@ def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
 def login_user(username, password):
-    filename = '/opt/repos/combined_project/users.csv'
+    filename = 'users.csv'
     if not os.path.exists(filename):
         return False
 
