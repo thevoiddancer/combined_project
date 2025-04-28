@@ -15,7 +15,7 @@ def login_user(username, password):
         reader = csv.DictReader(file)
         for row in reader:
             if row['Username'] == username and row['Password'] == hashed_password:
-                return True
+                return True, row['User Type']
     return False
 
 def create_user(first_name, last_name, phone, username, password, user_type):

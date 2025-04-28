@@ -58,8 +58,10 @@ class KozmetickiSalonApp:
         username = self.entry_username.get()
         password = self.entry_password.get()
 
-        if login_user(username, password):
+        login_ok, user_type = login_user(username, password)
+        if login_ok:
             self.logged_in_user = username
+            self.logged_in_user_type = user_type
             messagebox.showinfo("Uspjeh", f"Dobrodošli, {username}!")
             self.calendar_screen()
         else:
