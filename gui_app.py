@@ -94,11 +94,9 @@ class KozmetickiSalonApp:
 
     def do_register(self):
         d = {k: e.get().strip() for k,e in self.reg_entries.items()}
-        # Validate fields
         if not all(d.values()):
             messagebox.showerror("Greška","Popunite sva polja.")
             return
-        # Check duplicate username
         if os.path.exists("users.csv"):
             with open("users.csv", encoding="utf-8") as f:
                 for row in csv.DictReader(f):
@@ -124,6 +122,7 @@ class KozmetickiSalonApp:
             ("Rezervacije & Račun",  self.admin_reservations_screen),
             ("Dodaj administratora", self.add_admin_screen),
             ("Dodaj zaposlenika",    self.add_employee_screen),
+            ("Obriši usera",         self.delete_user_screen),
             ("Dodaj uslugu",         self.add_service_screen),
             ("Obriši uslugu",        self.delete_service_screen),
         ]
@@ -212,7 +211,7 @@ class KozmetickiSalonApp:
             return
         tk.Label(self.detail_frame, text=f"Rezervacija za {d:02d}.{m:02d}.{y}",
                  font=("Arial",12,"bold")).pack(pady=5)
-        users = [u["Username"] for u in csv.DictReader(open("users.csv",encoding="utf-8"))]
+        users = [u["Username"] for u in csv.DictReader(open("users.csv", encoding="utf-8"))]
         tk.Label(self.detail_frame, text="Korisnik:").pack(anchor="w")
         cb_u = ttk.Combobox(self.detail_frame, values=users, state="readonly"); cb_u.pack(pady=2)
         tk.Label(self.detail_frame, text="Termin:").pack(anchor="w")
@@ -254,7 +253,7 @@ class KozmetickiSalonApp:
         for w in parent.winfo_children():
             if not (isinstance(w, tk.Label) and w.cget("font")==("Arial",12,"bold")):
                 w.destroy()
-        svi = [r for r in csv.DictReader(open("appointments.csv",encoding="utf-8"))
+        svi = [r for r in csv.DictReader(open("appointments.csv", encoding="utf-8"))
                if int(r["Godina"])==y and int(r["Mjesec"])==m and int(r["Dan"])==d]
         if self.get_user_type()=="Korisnik":
             svi = [r for r in svi if r["Korisnik"]==self.logged_in_user]
@@ -303,7 +302,7 @@ class KozmetickiSalonApp:
     def do_delete_service(self):
         ime = self.del_svc_cb.get()
         delete_service(ime)
-        messagebox.showinfo("Uspjeh","Usluga obrisana.")
+        messagebox.showinfo("Uspjejh","Usluga obrisana.")
         self.admin_main_menu()
 
     # --- Add Administrator ---
@@ -364,6 +363,44 @@ class KozmetickiSalonApp:
             messagebox.showerror("Greška","Dodavanje nije uspjelo.")
         self.admin_main_menu()
 
+    # --- Delete User ---
+    def delete_user_screen(self):
+        """Show a list of all users and allow deletion."""
+        self.clear_frame()
+        f = tk.Frame(self.root); f.pack(pady=20, fill="both", expand=True)
+        tk.Label(f, text="Obriši usera", font=("Arial",18)).pack(pady=10)
+
+        users = [r["Username"]
+                 for r in csv.DictReader(open("users.csv", encoding="utf-8"))]
+
+        tk.Label(f, text="Odaberi usera za brisanje:", font=("Arial",14)).pack(pady=5)
+        self.del_user_cb = ttk.Combobox(f, values=users, state="readonly", font=("Arial",14))
+        self.del_user_cb.pack(pady=5)
+
+        btns = tk.Frame(f); btns.pack(pady=15)
+        tk.Button(btns, text="Obriši usera", font=("Arial",14),
+                  command=self.do_delete_user).pack(side="left", padx=10)
+        tk.Button(btns, text="Natrag", font=("Arial",14),
+                  command=self.admin_main_menu).pack(side="left")
+
+    def do_delete_user(self):
+        """Remove the selected user from users.csv."""
+        username = self.del_user_cb.get()
+        if not username:
+            messagebox.showwarning("Upozorenje", "Odaberite usera.")
+            return
+
+        rows = list(csv.DictReader(open("users.csv", encoding="utf-8")))
+        new_rows = [r for r in rows if r["Username"] != username]
+
+        with open("users.csv", "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+            writer.writeheader()
+            writer.writerows(new_rows)
+
+        messagebox.showinfo("Uspjeh", f"User '{username}' obrisan.")
+        self.admin_main_menu()
+
     # --- Generate TXT Receipt ---
     def print_txt_receipt(self, user, y, m, d, t, srv):
         dirr = os.path.join(os.path.dirname(__file__),'racuni')
@@ -377,6 +414,7 @@ class KozmetickiSalonApp:
             f.write("Hvala na povjerenju!\n")
         messagebox.showinfo("Račun","TXT račun spremljen u 'racuni' folderu.")
 
+    # --- Customer Calendar & Booking ---
     def calendar_screen(self):
         self.clear_frame()
         hdr = tk.Frame(self.root); hdr.pack(pady=5)
