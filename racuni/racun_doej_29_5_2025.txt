@@ -1,0 +1,9 @@
+      RAČUN
+========================
+Korisnik: doej
+Datum: 29.5.2025
+Vrijeme: 13:00
+Usluga: Manikura
+Cijena: 20.00 EUR
+========================
+Hvala na povjerenju!

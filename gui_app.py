@@ -33,7 +33,7 @@ class KozmetickiSalonApp:
         for w in self.root.winfo_children():
             w.destroy()
 
-    # Početni izbornik
+    # Start Screen
     def start_screen(self):
         self.clear_frame()
         f = tk.Frame(self.root); f.pack(expand=True, pady=50)
@@ -45,7 +45,7 @@ class KozmetickiSalonApp:
         tk.Button(f, text="Izlaz", font=("Arial",20), width=20,
                   command=self.root.quit).pack(pady=10)
 
-    # Prijava/registracija 
+    # Login / Registration 
     def login_screen(self):
         self.clear_frame()
         f = tk.Frame(self.root); f.pack(expand=True, pady=50)
@@ -60,8 +60,10 @@ class KozmetickiSalonApp:
 
     def do_login(self):
         user = self.e_user.get().strip()
-        pw   = self.e_pass.get().strip()    
-        if login_user(user, pw):           
+        pw_plain = self.e_pass.get().strip()
+        pw_hashed = hash_password(pw_plain)
+       
+        if login_user(user, pw_hashed):
             info = get_user(user)
             role = info.get('User Type','Korisnik')
             self.logged_in_user = user
@@ -82,8 +84,21 @@ class KozmetickiSalonApp:
         for label in ["Ime","Prezime","Telefon","Korisničko ime","Lozinka"]:
             tk.Label(f, text=label, font=("Arial",14)).pack(pady=3)
             show = "*" if label=="Lozinka" else None
-            self.reg_entries[label] = tk.Entry(f, font=("Arial",14), show=show)
-            self.reg_entries[label].pack(pady=3)
+            e = tk.Entry(f, font=("Arial",14), show=show)
+            e.pack(pady=3)
+            self.reg_entries[label] = e
+
+        # Dropdown for user type
+        tk.Label(f, text="Tip korisnika:", font=("Arial",14)).pack(pady=3)
+        self.cb_type = ttk.Combobox(
+            f,
+            values=["Korisnik","Zaposlenik"],
+            state="readonly",
+            font=("Arial",14)
+        )
+        self.cb_type.current(0)
+        self.cb_type.pack(pady=3)
+
         tk.Button(f, text="Registriraj se", font=("Arial",14),
                   command=self.do_register).pack(pady=10)
         tk.Button(f, text="Natrag", font=("Arial",14),
@@ -91,16 +106,38 @@ class KozmetickiSalonApp:
 
     def do_register(self):
         d = {k: e.get().strip() for k,e in self.reg_entries.items()}
-        hashed = hash_password(d["Lozinka"])
-        ok = create_user(d["Ime"],d["Prezime"],d["Telefon"],
-                         d["Korisničko ime"], hashed, "Korisnik")
+        role = self.cb_type.get()
+
+        #Validate all fields filled
+        if not all(d.values()):
+            messagebox.showerror("Greška", "Popunite sva polja.")
+            return
+
+        username = d["Korisničko ime"]
+        # Check for duplicate usernames in users.csv
+        try:
+            with open("users.csv", encoding="utf-8") as f:
+                for row in csv.DictReader(f):
+                    if row["Username"] == username:
+                        messagebox.showerror("Greška", "Korisničko ime već postoji!")
+                        return
+        except FileNotFoundError:
+            # If file doesn't exist yet, we'll create it in create_user
+            pass
+
+        #  Hash the password and create the user
+        pw_hashed = hash_password(d["Lozinka"])
+        ok = create_user(d["Ime"], d["Prezime"], d["Telefon"],
+                         username, pw_hashed, role)
         if ok:
             messagebox.showinfo("Uspjeh","Registracija uspješna!")
             self.start_screen()
         else:
             messagebox.showerror("Greška","Registracija nije uspjela.")
 
-    # Administrator: glavni izbornik
+
+
+    # Administrator Main Menu
     def admin_main_menu(self):
         self.clear_frame()
         f = tk.Frame(self.root); f.pack(expand=True, pady=30)
@@ -120,7 +157,7 @@ class KozmetickiSalonApp:
         tk.Button(f, text="Izlaz", font=("Arial",14),
                   command=self.root.quit).pack()
 
-    # Zaposlenik: glavni izbornik 
+    # Employee Main Menu
     def employee_main_menu(self):
         self.clear_frame()
         f = tk.Frame(self.root); f.pack(expand=True, pady=30)
@@ -137,7 +174,7 @@ class KozmetickiSalonApp:
         tk.Button(f, text="Izlaz", font=("Arial",14),
                   command=self.root.quit).pack()
 
-    # Crtanje kalendara
+    # Calendar Drawing & Navigation
     def _draw_calendar(self, day_callback):
         hdr = tk.Frame(self.root); hdr.pack(pady=5)
         tk.Button(hdr, text="<", command=self._prev_month).grid(row=0,column=0)
@@ -145,13 +182,13 @@ class KozmetickiSalonApp:
         tk.Button(hdr, text=">", command=self._next_month).grid(row=0,column=6)
         self.calendar_frame = tk.Frame(self.root); self.calendar_frame.pack()
         for i, dan in enumerate(DANI):
-            tk.Label(self.calendar_frame, text=dan, font=("Arial",12)).grid(row=1,column=i,padx=2)
+            tk.Label(self.calendar_frame, text=dan, font=("Arial",12))\
+              .grid(row=1,column=i,padx=2)
         y,m = self.current_year, self.current_month
         self.lbl_mes.config(text=f"{MJESECI[m-1]} {y}")
         first = dt.date(y,m,1); start = first.weekday()
         row, col = 2, start
-        days = get_days_in_month(y,m)
-        for d in range(1, days+1):
+        for d in range(1, get_days_in_month(y,m)+1):
             tk.Button(self.calendar_frame, text=str(d), width=4,
                       command=lambda d=d: day_callback(y,m,d))\
               .grid(row=row,column=col,padx=2,pady=2)
@@ -178,7 +215,7 @@ class KozmetickiSalonApp:
         else:
             self.admin_reservations_screen()
 
-    # Admin/Employee booking screen 
+    # Admin/Employee Booking Screen
     def admin_booking_screen(self):
         self.current_context = 'booking'
         self.clear_frame()
@@ -216,7 +253,7 @@ class KozmetickiSalonApp:
         save_appointment(y,m,d,t,srv,user)
         messagebox.showinfo("Uspjeh", f"Termin za {user} rezerviran: {d:02d}.{m:02d}.{y} u {t}.")
 
-    # Admin/Employee reservations & receipt screen
+    # Admin/Employee Reservations & Receipt Screen
     def admin_reservations_screen(self):
         self.current_context = 'review'
         self.clear_frame()
@@ -235,7 +272,7 @@ class KozmetickiSalonApp:
                  font=("Arial",12,"bold")).pack(pady=5)
         self.list_reservations(self.detail_frame, y, m, d)
 
-    #Prikaz rezervacija filtrirano po tipu
+    # Filtered Reservations List
     def list_reservations(self, parent, y, m, d):
         for w in parent.winfo_children():
             if not (isinstance(w, tk.Label) and w.cget("font")==("Arial",12,"bold")):
@@ -257,7 +294,7 @@ class KozmetickiSalonApp:
                               r["Korisnik"], y, m, d, r["Vrijeme"], r["Usluga"]
                           )).pack(side="right")
 
-    # Dodavanje / brisanje usluga i admina 
+    # Add/Delete Services & Admins
     def add_service_screen(self):
         self.clear_frame()
         f = tk.Frame(self.root); f.pack(pady=20)
@@ -308,16 +345,16 @@ class KozmetickiSalonApp:
 
     def do_add_admin(self):
         d = {k: e.get().strip() for k,e in self.admin_entries.items()}
-        hashed = hash_password(d["Lozinka"])
-        ok = create_user(d["Ime"],d["Prezime"],d["Telefon"],
-                         d["Korisničko ime"], hashed, "Administrator")
+        pw_hashed = hash_password(d["Lozinka"])
+        ok = create_user(d["Ime"], d["Prezime"], d["Telefon"],
+                         d["Korisničko ime"], pw_hashed, "Administrator")
         if ok:
             messagebox.showinfo("Uspjeh","Administrator dodan.")
         else:
             messagebox.showerror("Greška","Neuspjelo dodavanje.")
         self.admin_main_menu()
 
-    # Ispis računa kao TXT
+    # Generate TXT Receipt
     def print_txt_receipt(self, user, y, m, d, t, srv):
         dirr = os.path.join(os.path.dirname(__file__),'racuni')
         os.makedirs(dirr, exist_ok=True)
@@ -330,7 +367,7 @@ class KozmetickiSalonApp:
             f.write("Hvala na povjerenju!\n")
         messagebox.showinfo("Račun","TXT račun spremljen u 'racuni' folderu.")
 
-    # Korisnik: kalendar i rezervacije
+    # Customer Calendar & Booking
     def calendar_screen(self):
         self.clear_frame()
         hdr = tk.Frame(self.root); hdr.pack(pady=5)

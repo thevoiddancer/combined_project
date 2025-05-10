@@ -1,0 +1,9 @@
+      RAČUN
+========================
+Korisnik: asimac
+Datum: 30.5.2025
+Vrijeme: 09:00
+Usluga: Masaža
+Cijena: 30.00 EUR
+========================
+Hvala na povjerenju!
