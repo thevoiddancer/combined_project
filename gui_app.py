@@ -1,213 +1,414 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import datetime as dt
-from auth_functions import login_user, create_user
-from calendar_functions import get_days_in_month, save_appointment
-from receipt_functions import generate_receipt
+import csv
 import os
+import hashlib
 
-MJESECI = ['Siječanj', 'Veljača', 'Ožujak', 'Travanj', 'Svibanj', 'Lipanj', 'Srpanj', 'Kolovoz', 'Rujan', 'Listopad', 'Studeni', 'Prosinac']
-DANI = ['PON', 'UTO', 'SRI', 'ČET', 'PET', 'SUB', 'NED']
+from auth_functions import login_user, create_user, get_user
+from calendar_functions import get_days_in_month, get_available_times, save_appointment
+from service_functions import load_services, add_service, delete_service
+from receipt_functions import generate_receipt
 
-SERVICES = ["Manikura", "Pedikura", "Masaža", "Šminkanje"]
-SERVICE_PRICES = {
-    "Manikura": 20,
-    "Pedikura": 25,
-    "Masaža": 30,
-    "Šminkanje": 35
-}
+MJESECI = [
+    'Siječanj','Veljača','Ožujak','Travanj','Svibanj','Lipanj',
+    'Srpanj','Kolovoz','Rujan','Listopad','Studeni','Prosinac'
+]
+DANI = ['PON','UTO','SRI','ČET','PET','SUB','NED']
+
+def hash_password(pw: str) -> str:
+    return hashlib.sha256(pw.encode('utf-8')).hexdigest()
 
 class KozmetickiSalonApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Kozmetički Salon")
         self.logged_in_user = None
+        now = dt.datetime.now()
+        self.current_year, self.current_month = now.year, now.month
+        self.current_context = None
         self.start_screen()
 
     def clear_frame(self):
-        for widget in self.root.winfo_children():
-            widget.destroy()
+        for w in self.root.winfo_children():
+            w.destroy()
 
+    # Početni izbornik
     def start_screen(self):
         self.clear_frame()
-        frame = tk.Frame(self.root)
-        frame.pack(expand=True)
+        f = tk.Frame(self.root); f.pack(expand=True, pady=50)
+        tk.Label(f, text="Dobrodošli", font=("Arial",40)).pack(pady=20)
+        tk.Button(f, text="Prijava", font=("Arial",20), width=20,
+                  command=self.login_screen).pack(pady=10)
+        tk.Button(f, text="Registracija", font=("Arial",20), width=20,
+                  command=self.register_screen).pack(pady=10)
+        tk.Button(f, text="Izlaz", font=("Arial",20), width=20,
+                  command=self.root.quit).pack(pady=10)
 
-        tk.Label(frame, text="Dobrodošli", font=("Arial", 40)).pack(pady=20)
-        tk.Button(frame, text="Prijava", font=("Arial", 20), command=self.login_screen).pack(pady=10)
-        tk.Button(frame, text="Registracija", font=("Arial", 20), command=self.register_screen).pack(pady=10)
-        tk.Button(frame, text="Izlaz", font=("Arial", 20), command=self.root.quit).pack(pady=10)
-
+    # Prijava/registracija 
     def login_screen(self):
         self.clear_frame()
-        frame = tk.Frame(self.root)
-        frame.pack(expand=True)
-
-        tk.Label(frame, text="Korisničko ime:", font=("Arial", 20)).pack(pady=5)
-        self.entry_username = tk.Entry(frame, font=("Arial", 20))
-        self.entry_username.pack(pady=5)
-
-        tk.Label(frame, text="Lozinka:", font=("Arial", 20)).pack(pady=5)
-        self.entry_password = tk.Entry(frame, show="*", font=("Arial", 20))
-        self.entry_password.pack(pady=5)
-
-        tk.Button(frame, text="Prijavi se", font=("Arial", 20), command=self.do_login).pack(pady=10)
-        tk.Button(frame, text="Natrag", font=("Arial", 20), command=self.start_screen).pack(pady=10)
+        f = tk.Frame(self.root); f.pack(expand=True, pady=50)
+        tk.Label(f, text="Korisničko ime:", font=("Arial",16)).pack(pady=5)
+        self.e_user = tk.Entry(f, font=("Arial",16)); self.e_user.pack(pady=5)
+        tk.Label(f, text="Lozinka:", font=("Arial",16)).pack(pady=5)
+        self.e_pass = tk.Entry(f, show="*", font=("Arial",16)); self.e_pass.pack(pady=5)
+        tk.Button(f, text="Prijavi se", font=("Arial",16),
+                  command=self.do_login).pack(pady=10)
+        tk.Button(f, text="Natrag", font=("Arial",16),
+                  command=self.start_screen).pack()
 
     def do_login(self):
-        username = self.entry_username.get()
-        password = self.entry_password.get()
-
-        login_ok, user_type = login_user(username, password)
-        if login_ok:
-            self.logged_in_user = username
-            self.logged_in_user_type = user_type
-            messagebox.showinfo("Uspjeh", f"Dobrodošli, {username}!")
-            self.calendar_screen()
+        user = self.e_user.get().strip()
+        pw   = self.e_pass.get().strip()    
+        if login_user(user, pw):           
+            info = get_user(user)
+            role = info.get('User Type','Korisnik')
+            self.logged_in_user = user
+            messagebox.showinfo("Uspjeh", f"Uspješno ste prijavljeni kao {role}.")
+            if role == "Administrator":
+                self.admin_main_menu()
+            elif role == "Zaposlenik":
+                self.employee_main_menu()
+            else:
+                self.calendar_screen()
         else:
-            messagebox.showerror("Greška", "Pogrešno korisničko ime ili lozinka.")
+            messagebox.showerror("Greška","Pogrešno korisničko ime ili lozinka.")
 
     def register_screen(self):
         self.clear_frame()
-        frame = tk.Frame(self.root)
-        frame.pack(expand=True)
-
-        self.entry_first_name = tk.Entry(frame, font=("Arial", 20))
-        self.entry_last_name = tk.Entry(frame, font=("Arial", 20))
-        self.entry_phone = tk.Entry(frame, font=("Arial", 20))
-        self.entry_username_reg = tk.Entry(frame, font=("Arial", 20))
-        self.entry_password_reg = tk.Entry(frame, show="*", font=("Arial", 20))
-        self.user_type_combo = ttk.Combobox(frame, values=["Korisnik", "Zaposlenik"], font=("Arial", 20))
-
-        labels = ["Ime", "Prezime", "Broj mobitela", "Korisničko ime", "Lozinka", "Tip korisnika"]
-        entries = [self.entry_first_name, self.entry_last_name, self.entry_phone, self.entry_username_reg, self.entry_password_reg, self.user_type_combo]
-
-        for label_text, entry in zip(labels, entries):
-            tk.Label(frame, text=label_text, font=("Arial", 20)).pack(pady=5)
-            entry.pack(pady=5)
-
-        tk.Button(frame, text="Registriraj", font=("Arial", 20), command=self.do_register).pack(pady=10)
-        tk.Button(frame, text="Natrag", font=("Arial", 20), command=self.start_screen).pack(pady=10)
+        f = tk.Frame(self.root); f.pack(expand=True, pady=20)
+        self.reg_entries = {}
+        for label in ["Ime","Prezime","Telefon","Korisničko ime","Lozinka"]:
+            tk.Label(f, text=label, font=("Arial",14)).pack(pady=3)
+            show = "*" if label=="Lozinka" else None
+            self.reg_entries[label] = tk.Entry(f, font=("Arial",14), show=show)
+            self.reg_entries[label].pack(pady=3)
+        tk.Button(f, text="Registriraj se", font=("Arial",14),
+                  command=self.do_register).pack(pady=10)
+        tk.Button(f, text="Natrag", font=("Arial",14),
+                  command=self.start_screen).pack()
 
     def do_register(self):
-        data = [
-            self.entry_first_name.get(),
-            self.entry_last_name.get(),
-            self.entry_phone.get(),
-            self.entry_username_reg.get(),
-            self.entry_password_reg.get(),
-            self.user_type_combo.get()
-        ]
-
-        if all(data):
-            if create_user(*data):
-                messagebox.showinfo("Uspjeh", "Registracija uspješna!")
-                self.start_screen()
-            else:
-                messagebox.showerror("Greška", "Korisnik već postoji.")
+        d = {k: e.get().strip() for k,e in self.reg_entries.items()}
+        hashed = hash_password(d["Lozinka"])
+        ok = create_user(d["Ime"],d["Prezime"],d["Telefon"],
+                         d["Korisničko ime"], hashed, "Korisnik")
+        if ok:
+            messagebox.showinfo("Uspjeh","Registracija uspješna!")
+            self.start_screen()
         else:
-            messagebox.showerror("Greška", "Molimo popunite sva polja.")
+            messagebox.showerror("Greška","Registracija nije uspjela.")
 
+    # Administrator: glavni izbornik
+    def admin_main_menu(self):
+        self.clear_frame()
+        f = tk.Frame(self.root); f.pack(expand=True, pady=30)
+        tk.Label(f, text="Administracijske opcije", font=("Arial",24)).pack(pady=10)
+        options = [
+            ("Rezerviraj termin",    self.admin_booking_screen),
+            ("Rezervacije & Račun",  self.admin_reservations_screen),
+            ("Dodaj administratora", self.add_admin_screen),
+            ("Dodaj uslugu",         self.add_service_screen),
+            ("Obriši uslugu",        self.delete_service_screen),
+        ]
+        for text, cmd in options:
+            tk.Button(f, text=text, font=("Arial",16), width=30,
+                      command=cmd).pack(pady=5)
+        tk.Button(f, text="Odjava", font=("Arial",14),
+                  command=self.start_screen).pack(pady=20)
+        tk.Button(f, text="Izlaz", font=("Arial",14),
+                  command=self.root.quit).pack()
+
+    # Zaposlenik: glavni izbornik 
+    def employee_main_menu(self):
+        self.clear_frame()
+        f = tk.Frame(self.root); f.pack(expand=True, pady=30)
+        tk.Label(f, text="Zaposlenik – opcije", font=("Arial",24)).pack(pady=10)
+        options = [
+            ("Rezerviraj termin",    self.admin_booking_screen),
+            ("Rezervacije & Račun",  self.admin_reservations_screen),
+        ]
+        for text, cmd in options:
+            tk.Button(f, text=text, font=("Arial",16), width=30,
+                      command=cmd).pack(pady=5)
+        tk.Button(f, text="Odjava", font=("Arial",14),
+                  command=self.start_screen).pack(pady=20)
+        tk.Button(f, text="Izlaz", font=("Arial",14),
+                  command=self.root.quit).pack()
+
+    # Crtanje kalendara
+    def _draw_calendar(self, day_callback):
+        hdr = tk.Frame(self.root); hdr.pack(pady=5)
+        tk.Button(hdr, text="<", command=self._prev_month).grid(row=0,column=0)
+        self.lbl_mes = tk.Label(hdr, font=("Arial",18)); self.lbl_mes.grid(row=0,column=1,columnspan=5)
+        tk.Button(hdr, text=">", command=self._next_month).grid(row=0,column=6)
+        self.calendar_frame = tk.Frame(self.root); self.calendar_frame.pack()
+        for i, dan in enumerate(DANI):
+            tk.Label(self.calendar_frame, text=dan, font=("Arial",12)).grid(row=1,column=i,padx=2)
+        y,m = self.current_year, self.current_month
+        self.lbl_mes.config(text=f"{MJESECI[m-1]} {y}")
+        first = dt.date(y,m,1); start = first.weekday()
+        row, col = 2, start
+        days = get_days_in_month(y,m)
+        for d in range(1, days+1):
+            tk.Button(self.calendar_frame, text=str(d), width=4,
+                      command=lambda d=d: day_callback(y,m,d))\
+              .grid(row=row,column=col,padx=2,pady=2)
+            col+=1
+            if col>6: col, row = 0, row+1
+
+    def _prev_month(self):
+        if self.current_month==1:
+            self.current_month, self.current_year = 12, self.current_year-1
+        else:
+            self.current_month-=1
+        if self.current_context=='booking':
+            self.admin_booking_screen()
+        else:
+            self.admin_reservations_screen()
+
+    def _next_month(self):
+        if self.current_month==12:
+            self.current_month, self.current_year = 1, self.current_year+1
+        else:
+            self.current_month+=1
+        if self.current_context=='booking':
+            self.admin_booking_screen()
+        else:
+            self.admin_reservations_screen()
+
+    # Admin/Employee booking screen 
+    def admin_booking_screen(self):
+        self.current_context = 'booking'
+        self.clear_frame()
+        self._draw_calendar(self._admin_booking_day)
+        btns = tk.Frame(self.root); btns.pack(pady=5)
+        role = get_user(self.logged_in_user)['User Type']
+        back = self.admin_main_menu if role=="Administrator" else self.employee_main_menu
+        tk.Button(btns, text="Natrag", font=("Arial",14), command=back).pack(side="left", padx=5)
+        tk.Button(btns, text="Odjava", font=("Arial",14), command=self.start_screen).pack(side="left")
+
+    def _admin_booking_day(self, y, m, d):
+        if hasattr(self,'detail_frame'): self.detail_frame.destroy()
+        self.detail_frame = tk.Frame(self.root, bd=1, relief="sunken")
+        self.detail_frame.pack(fill="x", pady=10, padx=10)
+        if dt.date(y,m,d).weekday()>=5:
+            tk.Label(self.detail_frame, text="Samo radni dani (Pon–Pet).", fg="red").pack(pady=5)
+            return
+        tk.Label(self.detail_frame, text=f"Rezervacija za {d:02d}.{m:02d}.{y}",
+                 font=("Arial",12,"bold")).pack(pady=5)
+        users = [u["Username"] for u in csv.DictReader(open("users.csv",encoding="utf-8"))]
+        tk.Label(self.detail_frame, text="Korisnik:").pack(anchor="w")
+        cb_u = ttk.Combobox(self.detail_frame, values=users, state="readonly"); cb_u.pack(pady=2)
+        tk.Label(self.detail_frame, text="Termin:").pack(anchor="w")
+        cb_t = ttk.Combobox(self.detail_frame, values=get_available_times(y,m,d), state="readonly"); cb_t.pack(pady=2)
+        tk.Label(self.detail_frame, text="Usluga:").pack(anchor="w")
+        cb_s = ttk.Combobox(self.detail_frame, values=[s['name'] for s in load_services()], state="readonly"); cb_s.pack(pady=2)
+        tk.Button(self.detail_frame, text="Rezerviraj", font=("Arial",12),
+                  command=lambda: self._admin_book_and_confirm(y,m,d,cb_u.get(),cb_t.get(),cb_s.get())
+                 ).pack(pady=10)
+
+    def _admin_book_and_confirm(self, y, m, d, user, t, srv):
+        if not (user and t and srv):
+            messagebox.showwarning("Upozorenje","Popunite sve podatke.")
+            return
+        save_appointment(y,m,d,t,srv,user)
+        messagebox.showinfo("Uspjeh", f"Termin za {user} rezerviran: {d:02d}.{m:02d}.{y} u {t}.")
+
+    # Admin/Employee reservations & receipt screen
+    def admin_reservations_screen(self):
+        self.current_context = 'review'
+        self.clear_frame()
+        self._draw_calendar(self._admin_review_day)
+        btns = tk.Frame(self.root); btns.pack(pady=5)
+        role = get_user(self.logged_in_user)['User Type']
+        back = self.admin_main_menu if role=="Administrator" else self.employee_main_menu
+        tk.Button(btns, text="Natrag", font=("Arial",14), command=back).pack(side="left", padx=5)
+        tk.Button(btns, text="Odjava", font=("Arial",14), command=self.start_screen).pack(side="left")
+
+    def _admin_review_day(self, y, m, d):
+        if hasattr(self,'detail_frame'): self.detail_frame.destroy()
+        self.detail_frame = tk.Frame(self.root, bd=1, relief="sunken")
+        self.detail_frame.pack(fill="both", expand=True, pady=10, padx=10)
+        tk.Label(self.detail_frame, text=f"Rezervacije za {d:02d}.{m:02d}.{y}",
+                 font=("Arial",12,"bold")).pack(pady=5)
+        self.list_reservations(self.detail_frame, y, m, d)
+
+    #Prikaz rezervacija filtrirano po tipu
+    def list_reservations(self, parent, y, m, d):
+        for w in parent.winfo_children():
+            if not (isinstance(w, tk.Label) and w.cget("font")==("Arial",12,"bold")):
+                w.destroy()
+        svi = [r for r in csv.DictReader(open("appointments.csv",encoding="utf-8"))
+               if int(r["Godina"])==y and int(r["Mjesec"])==m and int(r["Dan"])==d]
+        if self.get_user_type()=="Korisnik":
+            svi = [r for r in svi if r["Korisnik"]==self.logged_in_user]
+        if not svi:
+            tk.Label(parent, text="Nema rezervacija.", anchor="w").pack(fill="x")
+            return
+        for r in svi:
+            f = tk.Frame(parent); f.pack(fill="x", pady=2)
+            txt = f"{r['Vrijeme']} – {r['Usluga']} ({r['Korisnik']})"
+            tk.Label(f, text=txt, anchor="w").pack(side="left", fill="x", expand=True)
+            if self.get_user_type() in ("Zaposlenik","Administrator"):
+                tk.Button(f, text="Ispiši račun", font=("Arial",10),
+                          command=lambda r=r: self.print_txt_receipt(
+                              r["Korisnik"], y, m, d, r["Vrijeme"], r["Usluga"]
+                          )).pack(side="right")
+
+    # Dodavanje / brisanje usluga i admina 
+    def add_service_screen(self):
+        self.clear_frame()
+        f = tk.Frame(self.root); f.pack(pady=20)
+        tk.Label(f, text="Ime usluge:", font=("Arial",14)).pack(pady=3)
+        self.svc_name = tk.Entry(f, font=("Arial",14)); self.svc_name.pack(pady=3)
+        tk.Label(f, text="Cijena:", font=("Arial",14)).pack(pady=3)
+        self.svc_price = tk.Entry(f, font=("Arial",14)); self.svc_price.pack(pady=3)
+        tk.Button(f, text="Dodaj", font=("Arial",14),
+                  command=self.do_add_service).pack(pady=10)
+        tk.Button(f, text="Natrag", font=("Arial",14), command=self.admin_main_menu).pack()
+
+    def do_add_service(self):
+        ime, cij = self.svc_name.get().strip(), self.svc_price.get().strip()
+        if add_service(ime, cij):
+            messagebox.showinfo("Uspjeh","Usluga dodana.")
+        else:
+            messagebox.showerror("Greška","Neuspjelo dodavanje.")
+        self.admin_main_menu()
+
+    def delete_service_screen(self):
+        self.clear_frame()
+        f = tk.Frame(self.root); f.pack(pady=20)
+        tk.Label(f, text="Odaberi uslugu za brisanje:", font=("Arial",14)).pack(pady=3)
+        svcs = [s['name'] for s in load_services()]
+        self.del_svc_cb = ttk.Combobox(f, values=svcs); self.del_svc_cb.pack(pady=3)
+        tk.Button(f, text="Obriši", font=("Arial",14), command=self.do_delete_service).pack(pady=10)
+        tk.Button(f, text="Natrag", font=("Arial",14), command=self.admin_main_menu).pack()
+
+    def do_delete_service(self):
+        ime = self.del_svc_cb.get()
+        delete_service(ime)
+        messagebox.showinfo("Uspjeh","Usluga obrisana.")
+        self.admin_main_menu()
+
+    def add_admin_screen(self):
+        self.clear_frame()
+        f = tk.Frame(self.root); f.pack(pady=20)
+        self.admin_entries = {}
+        for label in ["Ime","Prezime","Telefon","Korisničko ime","Lozinka"]:
+            tk.Label(f, text=label, font=("Arial",14)).pack(pady=3)
+            show = "*" if label=="Lozinka" else None
+            entry = tk.Entry(f, font=("Arial",14), show=show)
+            entry.pack(pady=3)
+            self.admin_entries[label] = entry
+        tk.Button(f, text="Dodaj administratora", font=("Arial",14),
+                  command=self.do_add_admin).pack(pady=10)
+        tk.Button(f, text="Natrag", font=("Arial",14), command=self.admin_main_menu).pack()
+
+    def do_add_admin(self):
+        d = {k: e.get().strip() for k,e in self.admin_entries.items()}
+        hashed = hash_password(d["Lozinka"])
+        ok = create_user(d["Ime"],d["Prezime"],d["Telefon"],
+                         d["Korisničko ime"], hashed, "Administrator")
+        if ok:
+            messagebox.showinfo("Uspjeh","Administrator dodan.")
+        else:
+            messagebox.showerror("Greška","Neuspjelo dodavanje.")
+        self.admin_main_menu()
+
+    # Ispis računa kao TXT
+    def print_txt_receipt(self, user, y, m, d, t, srv):
+        dirr = os.path.join(os.path.dirname(__file__),'racuni')
+        os.makedirs(dirr, exist_ok=True)
+        fname = os.path.join(dirr, f"racun_{user}_{d}_{m}_{y}.txt")
+        price = next((s['price'] for s in load_services() if s['name']==srv), 0)
+        with open(fname, 'w', encoding='utf-8') as f:
+            f.write("      RAČUN\n========================\n")
+            f.write(f"Korisnik: {user}\nDatum: {d}.{m}.{y}\nVrijeme: {t}\n")
+            f.write(f"Usluga: {srv}\nCijena: {price:.2f} EUR\n========================\n")
+            f.write("Hvala na povjerenju!\n")
+        messagebox.showinfo("Račun","TXT račun spremljen u 'racuni' folderu.")
+
+    # Korisnik: kalendar i rezervacije
     def calendar_screen(self):
         self.clear_frame()
+        hdr = tk.Frame(self.root); hdr.pack(pady=5)
+        tk.Button(hdr, text="<", command=self.prev_month).grid(row=0,column=0)
+        self.lbl_mes = tk.Label(hdr, font=("Arial",18)); self.lbl_mes.grid(row=0,column=1,columnspan=5)
+        tk.Button(hdr, text=">", command=self.next_month).grid(row=0,column=6)
 
-        now = dt.datetime.now()
-        self.year = now.year
-        self.month = now.month
+        self.calendar_frame = tk.Frame(self.root); self.calendar_frame.pack()
+        for i, dan in enumerate(DANI):
+            tk.Label(self.calendar_frame, text=dan, font=("Arial",12))\
+              .grid(row=1,column=i,padx=2)
+        self.draw_days()
 
-        self.canvas = tk.Canvas(self.root)
-        self.canvas.pack()
+        self.detail_frame = tk.Frame(self.root, bd=1, relief="sunken")
+        self.detail_frame.pack(fill="x", pady=10, padx=10)
+        review = tk.LabelFrame(self.detail_frame, text="Pregled rezervacija", padx=5, pady=5)
+        review.pack(fill="x", pady=5)
+        self.list_reservations(review, self.current_year, self.current_month, 1)
 
-        self.create_calendar()
+        nav = tk.Frame(self.root); nav.pack(pady=5)
+        tk.Button(nav, text="Natrag", font=("Arial",14), command=self.start_screen).pack(side="left", padx=5)
+        tk.Button(nav, text="Odjava", font=("Arial",14), command=self.start_screen).pack(side="left")
 
-        button_frame = tk.Frame(self.root)
-        button_frame.pack(pady=20)
-
-        logout_button = tk.Button(button_frame, text="Odjava", font=("Arial", 20), command=self.start_screen)
-        logout_button.pack()
-
-
-    def create_calendar(self):
-        for widget in self.canvas.winfo_children():
-            widget.destroy()
-
-        tk.Label(self.canvas, text=f"{MJESECI[self.month-1]} {self.year}", font=("Arial", 30)).grid(row=0, column=1, columnspan=5)
-
-        tk.Button(self.canvas, text="<", font=("Arial", 20), command=lambda: self.change_month(-1)).grid(row=0, column=0)
-        tk.Button(self.canvas, text=">", font=("Arial", 20), command=lambda: self.change_month(1)).grid(row=0, column=6)
-
-        for idx, dan in enumerate(DANI):
-            tk.Label(self.canvas, text=dan, font=("Arial", 18)).grid(row=1, column=idx)
-
-        day_1 = dt.date(self.year, self.month, 1).weekday()
-
-        for i in range(1, get_days_in_month(self.year, self.month)+1):
-            tk.Button(self.canvas, text=i, font=("Arial", 18), command=lambda d=i: self.select_time(d)).grid(row=2+(day_1+i-1)//7, column=(day_1+i-1)%7)
-
-    def change_month(self, direction):
-        self.month += direction
-        if self.month < 1:
-            self.month = 12
-            self.year -= 1
-        elif self.month > 12:
-            self.month = 1
-            self.year += 1
-        self.create_calendar()
-
-    def select_time(self, dan):
-        self.clear_frame()
-
-        self.dan = dan
-        self.available_times = ['8:00', '9:00', '10:00', '11:00']
-        frame = tk.Frame(self.root)
-        frame.pack(expand=True)
-
-        tk.Label(frame, text=f"Odaberi vrijeme za {dan}.{self.month}.{self.year}", font=("Arial", 30)).pack(pady=10)
-
-        self.selected_time = tk.StringVar()
-        time_menu = ttk.Combobox(frame, textvariable=self.selected_time, values=self.available_times, font=("Arial", 20))
-        time_menu.pack(pady=10)
-        time_menu.current(0)
-
-        tk.Label(frame, text="Odaberi uslugu:", font=("Arial", 25)).pack(pady=10)
-
-        self.selected_service = tk.StringVar()
-        service_menu = ttk.Combobox(frame, textvariable=self.selected_service, values=SERVICES, font=("Arial", 20))
-        service_menu.pack(pady=10)
-        service_menu.current(0)
-
-        self.label_cijena = tk.Label(frame, text="", font=("Arial", 20))
-        self.label_cijena.pack(pady=10)
-
-        service_menu.bind("<<ComboboxSelected>>", self.update_price)
-
-        tk.Button(frame, text="Rezerviraj", font=("Arial", 20), command=self.do_reservation).pack(pady=10)
-
-    def update_price(self, event):
-        usluga = self.selected_service.get()
-        cijena = SERVICE_PRICES.get(usluga, 0)
-        self.label_cijena.config(text=f"Cijena: {cijena} EUR")
-
-    def do_reservation(self):
-        if self.selected_time.get() and self.selected_service.get():
-            save_appointment(self.year, self.month, self.dan, self.selected_time.get(), self.selected_service.get(), self.logged_in_user)
-            messagebox.showinfo("Uspješno", "Rezervacija spremljena!")
-            self.show_after_reservation()
+    def prev_month(self):
+        if self.current_month==1:
+            self.current_month, self.current_year = 12, self.current_year-1
         else:
-            messagebox.showerror("Greška", "Molimo odaberite vrijeme i uslugu.")
+            self.current_month-=1
+        self.calendar_screen()
 
-    def show_after_reservation(self):
-        self.clear_frame()
-        frame = tk.Frame(self.root)
-        frame.pack(expand=True)
+    def next_month(self):
+        if self.current_month==12:
+            self.current_month, self.current_year = 1, self.current_year+1
+        else:
+            self.current_month+=1
+        self.calendar_screen()
 
-        tk.Label(frame, text="Rezervacija uspješna!", font=("Arial", 30)).pack(pady=20)
+    def draw_days(self):
+        for w in self.calendar_frame.winfo_children():
+            if w.grid_info().get("row",0)>=2: w.destroy()
+        y,m = self.current_year, self.current_month
+        self.lbl_mes.config(text=f"{MJESECI[m-1]} {y}")
+        first = dt.date(y,m,1); start = first.weekday()
+        row,col = 2,start
+        for d in range(1, get_days_in_month(y,m)+1):
+            tk.Button(self.calendar_frame, text=str(d), width=4,
+                      command=lambda d=d: self.user_day_screen(y,m,d))\
+              .grid(row=row, column=col, padx=2, pady=2)
+            col+=1
+            if col>6: col, row = 0, row+1
 
-        tk.Button(frame, text="Ispiši račun", font=("Arial", 20), command=self.generate_receipt).pack(pady=10)
-        tk.Button(frame, text="Natrag na kalendar", font=("Arial", 20), command=self.calendar_screen).pack(pady=10)
-        tk.Button(frame, text="Odjava", font=("Arial", 20), command=self.start_screen).pack(pady=10)
+    def user_day_screen(self, y, m, d):
+        for w in self.detail_frame.winfo_children(): w.destroy()
+        role = self.get_user_type()
+        weekday = dt.date(y,m,d).weekday()
 
-    def generate_receipt(self):
-        generate_receipt(self.logged_in_user, self.year, self.month, self.dan, self.selected_time.get(), self.selected_service.get())
-        messagebox.showinfo("Račun", "Račun je uspješno generiran!")
+        review = tk.LabelFrame(self.detail_frame, text="Pregled rezervacija", padx=5, pady=5)
+        review.pack(fill="x", pady=5)
+        self.list_reservations(review, y, m, d)
 
+        if role=="Korisnik":
+            if weekday>=5:
+                tk.Label(self.detail_frame, text="Samo radni dani (Pon–Pet).", fg="red").pack()
+                return
+            tk.Label(self.detail_frame, text="Termin:").pack(anchor="w")
+            cb_t = ttk.Combobox(self.detail_frame, values=get_available_times(y,m,d)); cb_t.pack(pady=2)
+            tk.Label(self.detail_frame, text="Usluga:").pack(anchor="w")
+            cb_s = ttk.Combobox(self.detail_frame, values=[s['name'] for s in load_services()]); cb_s.pack(pady=2)
+            tk.Button(self.detail_frame, text="Rezerviraj", font=("Arial",12),
+                      command=lambda: self._user_book(y,m,d,cb_t.get(),cb_s.get())).pack(pady=10)
+
+    def _user_book(self, y, m, d, t, srv):
+        if not (t and srv):
+            messagebox.showwarning("Upozorenje","Popunite sve."); return
+        save_appointment(y,m,d,t,srv,self.logged_in_user)
+        messagebox.showinfo("Uspjeh", f"Termin rezerviran: {d:02d}.{m:02d}.{y} u {t}.")
+        self.user_day_screen(y,m,d)
+
+    def get_user_type(self):
+        info = get_user(self.logged_in_user)
+        return info.get("User Type","") if info else ""
