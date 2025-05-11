@@ -100,6 +100,7 @@ Receipts (.txt) are saved in the `racuni/` directory within the main project fol
     Book appointment
     View Appointments & Receipt
     Add administrator
+    Add employee
     Add service
     Remove service
 
@@ -122,4 +123,4 @@ Pressing Back returns to the corresponding main menu, Logout returns to the star
 - Passwords are stored only as hashes (SHA‑256). The frontend does not hash on login—login_user handles hashing internally. 
 - CSV files act as the single “database”; you can manually edit them if needed.
 - To refresh lists of services or appointments, restart the application.
-- For security reasons, the registration form only allows creating “Customer” or “Employee” accounts. Administrator accounts must be  added manually to the users.csv file (with a SHA-256 hashed password). Once an Administrator user exists in users.csv, they can log in through the app and manage services.
+- For security reasons, the registration form only allows creating “Customer” or accounts. Administrator accounts must be  added manually to the users.csv file (with a SHA-256 hashed password). Once an Administrator user exists in users.csv, they can log in through the app and manage services.
