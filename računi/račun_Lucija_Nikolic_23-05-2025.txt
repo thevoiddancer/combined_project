@@ -1,0 +1,13 @@
+         Račun
+------------------------------
+------------------------------
+Ime: Lucija 
+Prezime: Nikolic
+Datum: 23-05-2025
+Vrijeme: 10:00
+Usluga: Njega lica
+Cijena: 28€
+------------------------------
+------------------------------
+
+   Hvala na povjerenju!   

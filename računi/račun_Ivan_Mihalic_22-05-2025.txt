@@ -1,0 +1,13 @@
+         Račun
+------------------------------
+------------------------------
+Ime: Ivan 
+Prezime: Mihalic
+Datum: 22-05-2025
+Vrijeme: 15:00
+Usluga: Fizio terapija
+Cijena: 35€
+------------------------------
+------------------------------
+
+   Hvala na povjerenju!   
